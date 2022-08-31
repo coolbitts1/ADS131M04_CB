@@ -9,12 +9,8 @@
  *
  * If you find bugs, please inform me!
  *
- * Written by Wolfgang (Wolle) Ewald
- * 
- * You'll find a tutorial soon on:
- *
- * https://wolles-elektronikkiste.de/en/     (English)
- * https://wolles-elektronikkiste.de/        (German)
+ * Written by CoolBitts LLC
+ * info@coolbitts.com
  *
  ******************************************************************************/
 
@@ -28,117 +24,117 @@
 #endif
 #include<SPI.h>
 
-//ADS1220 SPI commands
-#define ADS1220_RESET       0x06    
-#define ADS1220_START       0x08    //Send the START/SYNC command (08h) to start converting in continuous conversion mode
-#define ADS1220_PWRDOWN     0x02
-#define ADS1220_RDATA       0x10
-#define ADS1220_WREG        0x40    // write register
-#define ADS1220_RREG        0x20    // read register
+//ADS131M04 SPI commands
+#define ADS131M04_RESET       0x06    
+#define ADS131M04_START       0x08    //Send the START/SYNC command (08h) to start converting in continuous conversion mode
+#define ADS131M04_PWRDOWN     0x02
+#define ADS131M04_RDATA       0x10
+#define ADS131M04_WREG        0x40    // write register
+#define ADS131M04_RREG        0x20    // read register
 
 /* registers */
-#define ADS1220_CONF_REG_0  0x00
-#define ADS1220_CONF_REG_1  0x01
-#define ADS1220_CONF_REG_2  0x02
-#define ADS1220_CONF_REG_3  0x03
+#define ADS131M04_CONF_REG_0  0x00
+#define ADS131M04_CONF_REG_1  0x01
+#define ADS131M04_CONF_REG_2  0x02
+#define ADS131M04_CONF_REG_3  0x03
 
 /* other */
-#define ADS1220_RANGE 8388607.0 // = 2^23 - 1
+#define ADS131M04_RANGE 8388607.0 // = 2^23 - 1
 
-typedef enum ADS1220_MUX {
-    ADS1220_MUX_0_1     = 0x00,   //default
-    ADS1220_MUX_0_2     = 0x10,
-    ADS1220_MUX_0_3     = 0x20,
-    ADS1220_MUX_1_2     = 0x30,
-    ADS1220_MUX_1_3     = 0x40,
-    ADS1220_MUX_2_3     = 0x50,
-    ADS1220_MUX_1_0     = 0x60,
-    ADS1220_MUX_3_2     = 0x70,
-    ADS1220_MUX_0_AVSS  = 0x80,
-    ADS1220_MUX_1_AVSS  = 0x90,
-    ADS1220_MUX_2_AVSS  = 0xA0,
-    ADS1220_MUX_3_AVSS  = 0xB0,
-    ADS1220_MUX_REFPX_REFNX_4 = 0xC0,
-    ADS1220_MUX_AVDD_M_AVSS_4 = 0xD0,
-    ADS1220_MUX_AVDD_P_AVSS_2 = 0xE0
-} ads1220Mux;
+typedef enum ADS131M04_MUX {
+    ADS131M04_MUX_0_1     = 0x00,   //default
+    ADS131M04_MUX_0_2     = 0x10,
+    ADS131M04_MUX_0_3     = 0x20,
+    ADS131M04_MUX_1_2     = 0x30,
+    ADS131M04_MUX_1_3     = 0x40,
+    ADS131M04_MUX_2_3     = 0x50,
+    ADS131M04_MUX_1_0     = 0x60,
+    ADS131M04_MUX_3_2     = 0x70,
+    ADS131M04_MUX_0_AVSS  = 0x80,
+    ADS131M04_MUX_1_AVSS  = 0x90,
+    ADS131M04_MUX_2_AVSS  = 0xA0,
+    ADS131M04_MUX_3_AVSS  = 0xB0,
+    ADS131M04_MUX_REFPX_REFNX_4 = 0xC0,
+    ADS131M04_MUX_AVDD_M_AVSS_4 = 0xD0,
+    ADS131M04_MUX_AVDD_P_AVSS_2 = 0xE0
+} ADS131M04Mux;
 
-typedef enum ADS1220_GAIN {
-    ADS1220_GAIN_1   = 0x00,   //default
-    ADS1220_GAIN_2   = 0x02,
-    ADS1220_GAIN_4   = 0x04,
-    ADS1220_GAIN_8   = 0x06,
-    ADS1220_GAIN_16  = 0x08,
-    ADS1220_GAIN_32  = 0x0A,
-    ADS1220_GAIN_64  = 0x0C,
-    ADS1220_GAIN_128 = 0x0E
-} ads1220Gain;
+typedef enum ADS131M04_GAIN {
+    ADS131M04_GAIN_1   = 0x00,   //default
+    ADS131M04_GAIN_2   = 0x02,
+    ADS131M04_GAIN_4   = 0x04,
+    ADS131M04_GAIN_8   = 0x06,
+    ADS131M04_GAIN_16  = 0x08,
+    ADS131M04_GAIN_32  = 0x0A,
+    ADS131M04_GAIN_64  = 0x0C,
+    ADS131M04_GAIN_128 = 0x0E
+} ADS131M04Gain;
 
-typedef enum ADS1220_DATA_RATE {
-    ADS1220_DR_LVL_0 = 0x00,   // default
-    ADS1220_DR_LVL_1 = 0x20,
-    ADS1220_DR_LVL_2 = 0x40,
-    ADS1220_DR_LVL_3 = 0x60,
-    ADS1220_DR_LVL_4 = 0x80,
-    ADS1220_DR_LVL_5 = 0xA0,
-    ADS1220_DR_LVL_6 = 0xC0
-} ads1220DataRate;
+typedef enum ADS131M04_DATA_RATE {
+    ADS131M04_DR_LVL_0 = 0x00,   // default
+    ADS131M04_DR_LVL_1 = 0x20,
+    ADS131M04_DR_LVL_2 = 0x40,
+    ADS131M04_DR_LVL_3 = 0x60,
+    ADS131M04_DR_LVL_4 = 0x80,
+    ADS131M04_DR_LVL_5 = 0xA0,
+    ADS131M04_DR_LVL_6 = 0xC0
+} ADS131M04DataRate;
 
-typedef enum ADS1220_OP_MODE {      
-    ADS1220_NORMAL_MODE     = 0x00,  // default
-    ADS1220_DUTY_CYCLE_MODE = 0x08,
-    ADS1220_TURBO_MODE      = 0x10
-} ads1220OpMode;
+typedef enum ADS131M04_OP_MODE {      
+    ADS131M04_NORMAL_MODE     = 0x00,  // default
+    ADS131M04_DUTY_CYCLE_MODE = 0x08,
+    ADS131M04_TURBO_MODE      = 0x10
+} ADS131M04OpMode;
 
-typedef enum ADS1220_CONV_MODE {
-    ADS1220_SINGLE_SHOT     = 0x00,  // default
-    ADS1220_CONTINUOUS      = 0x04
-} ads1220ConvMode;
+typedef enum ADS131M04_CONV_MODE {
+    ADS131M04_SINGLE_SHOT     = 0x00,  // default
+    ADS131M04_CONTINUOUS      = 0x04
+} ADS131M04ConvMode;
 
-typedef enum ADS1220_VREF{
-    ADS1220_VREF_INT            = 0x00,  // default
-    ADS1220_VREF_REFP0_REFN0    = 0x40,
-    ADS1220_VREF_REFP1_REFN1    = 0x80,
-    ADS1220_VREF_AVDD_AVSS      = 0xC0
-} ads1220VRef;
+typedef enum ADS131M04_VREF{
+    ADS131M04_VREF_INT            = 0x00,  // default
+    ADS131M04_VREF_REFP0_REFN0    = 0x40,
+    ADS131M04_VREF_REFP1_REFN1    = 0x80,
+    ADS131M04_VREF_AVDD_AVSS      = 0xC0
+} ADS131M04VRef;
 
-typedef enum ADS1220_FIR{
-    ADS1220_NONE        = 0x00,   // default
-    ADS1220_50HZ_60HZ   = 0x10,
-    ADS1220_50HZ        = 0x20,
-    ADS1220_60HZ        = 0x30
-} ads1220FIR;
+typedef enum ADS131M04_FIR{
+    ADS131M04_NONE        = 0x00,   // default
+    ADS131M04_50HZ_60HZ   = 0x10,
+    ADS131M04_50HZ        = 0x20,
+    ADS131M04_60HZ        = 0x30
+} ADS131M04FIR;
 
-typedef enum ADS1220_PSW {
-    ADS1220_ALWAYS_OPEN = 0x00,  // default
-    ADS1220_SWITCH      = 0x08
-} ads1220PSW;
+typedef enum ADS131M04_PSW {
+    ADS131M04_ALWAYS_OPEN = 0x00,  // default
+    ADS131M04_SWITCH      = 0x08
+} ADS131M04PSW;
 
-typedef enum ADS1220_IDAC_CURRENT {
-    ADS1220_IDAC_OFF        = 0x00,  // defaulr
-    ADS1220_IDAC_10_MU_A    = 0x01,
-    ADS1220_IDAC_50_MU_A    = 0x02,
-    ADS1220_IDAC_100_MU_A   = 0x03,
-    ADS1220_IDAC_250_MU_A   = 0x04,
-    ADS1220_IDAC_500_MU_A   = 0x05,
-    ADS1220_IDAC_1000_MU_A  = 0x06,
-    ADS1220_IDAC_1500_MU_A  = 0x07
-} ads1220IdacCurrent;
+typedef enum ADS131M04_IDAC_CURRENT {
+    ADS131M04_IDAC_OFF        = 0x00,  // defaulr
+    ADS131M04_IDAC_10_MU_A    = 0x01,
+    ADS131M04_IDAC_50_MU_A    = 0x02,
+    ADS131M04_IDAC_100_MU_A   = 0x03,
+    ADS131M04_IDAC_250_MU_A   = 0x04,
+    ADS131M04_IDAC_500_MU_A   = 0x05,
+    ADS131M04_IDAC_1000_MU_A  = 0x06,
+    ADS131M04_IDAC_1500_MU_A  = 0x07
+} ADS131M04IdacCurrent;
 
-typedef enum ADS1220_IDAC_ROUTING {
-    ADS1220_IDAC_NONE       = 0x00,  // default
-    ADS1220_IDAC_AIN0_REFP1 = 0x01,
-    ADS1220_IDAC_AIN1       = 0x02,
-    ADS1220_IDAC_AIN2       = 0x03,
-    ADS1220_IDAC_AIN3_REFN1 = 0x04,
-    ADS1220_IDAC_REFP0      = 0x05,
-    ADS1220_IDAC_REFN0      = 0x06,
-} ads1220IdacRouting;
+typedef enum ADS131M04_IDAC_ROUTING {
+    ADS131M04_IDAC_NONE       = 0x00,  // default
+    ADS131M04_IDAC_AIN0_REFP1 = 0x01,
+    ADS131M04_IDAC_AIN1       = 0x02,
+    ADS131M04_IDAC_AIN2       = 0x03,
+    ADS131M04_IDAC_AIN3_REFN1 = 0x04,
+    ADS131M04_IDAC_REFP0      = 0x05,
+    ADS131M04_IDAC_REFN0      = 0x06,
+} ADS131M04IdacRouting;
 
-typedef enum ADS1220_DRDY_MODE {
-    ADS1220_DRDY      = 0x00,   // default
-    ADS1220_DOUT_DRDY = 0x02
-} ads1220DrdyMode;
+typedef enum ADS131M04_DRDY_MODE {
+    ADS131M04_DRDY      = 0x00,   // default
+    ADS131M04_DOUT_DRDY = 0x02
+} ADS131M04DrdyMode;
 
 /* other */
 
@@ -154,29 +150,29 @@ public:
     void powerDown();
     
     /* Configuration Register 0 settings */
-    void setCompareChannels(ads1220Mux mux);
-    void setGain(ads1220Gain gain);
+    void setCompareChannels(ADS131M04Mux mux);
+    void setGain(ADS131M04Gain gain);
     uint8_t getGainFactor();
     void bypassPGA(bool bypass);
     bool isPGABypassed();
     
     /* Configuration Register 1 settings */
-    void setDataRate(ads1220DataRate rate);
-    void setOperatingMode(ads1220OpMode mode);
-    void setConversionMode(ads1220ConvMode mode);
+    void setDataRate(ADS131M04DataRate rate);
+    void setOperatingMode(ADS131M04OpMode mode);
+    void setConversionMode(ADS131M04ConvMode mode);
     void enableTemperatureSensor(bool enable);
     void enableBurnOutCurrentSources(bool enable);
     
     /* Configuration Register 2 settings */
-    void setVRefSource(ads1220VRef vRefSource);
-    void setFIRFilter(ads1220FIR fir);
-    void setLowSidePowerSwitch(ads1220PSW psw);
-    void setIdacCurrent(ads1220IdacCurrent current);
+    void setVRefSource(ADS131M04VRef vRefSource);
+    void setFIRFilter(ADS131M04FIR fir);
+    void setLowSidePowerSwitch(ADS131M04PSW psw);
+    void setIdacCurrent(ADS131M04IdacCurrent current);
     
     /* Configuration Register 3 settings */
-    void setIdac1Routing(ads1220IdacRouting route);
-    void setIdac2Routing(ads1220IdacRouting route);
-    void setDrdyMode(ads1220DrdyMode mode);
+    void setIdac1Routing(ADS131M04IdacRouting route);
+    void setIdac2Routing(ADS131M04IdacRouting route);
+    void setDrdyMode(ADS131M04DrdyMode mode);
     
     /* Other settings */
     void setSPIClockSpeed(unsigned long clock);
@@ -203,7 +199,7 @@ private:
     uint8_t gain;
     bool refMeasurement; 
     bool doNotBypassPgaIfPossible;
-    ads1220ConvMode convMode;
+    ADS131M04ConvMode convMode;
 
     void forcedBypassPGA();
     int32_t getData();

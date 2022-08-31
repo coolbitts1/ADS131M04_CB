@@ -1,22 +1,18 @@
-/*****************************************
-* This is a library for the 24 bit, 4 channel ADS1220 A/D Converter
-*
-* I added example sketches which should enable you to use the library. 
-*
-* You are free to use it, change it or build on it. In case you like 
-* it, it would be cool if you give it a star.
-* 
-* If you find bugs, please inform me!
-* 
-* Written by Wolfgang (Wolle) Ewald
-*
-* You'll find a tutorial soon on:
-*
-* https://wolles-elektronikkiste.de/en/     (English)
-* https://wolles-elektronikkiste.de/        (German)
-
-*
-*******************************************/
+/******************************************************************************
+ *
+ * This is a library for the 24 bit, 4 channel ADS131M04 A/D Converter
+ *
+ * I added several examples sketches which should enable you to use the library.
+ *
+ * You are free to use it, change it or build on it. In case you like it, it would
+ * be cool if you give it a star.
+ *
+ * If you find bugs, please inform me!
+ *
+ * Written by CoolBitts LLC
+ * info@coolbitts.com
+ *
+ ******************************************************************************/
 
 #include "ADS131M04_CB.h"
 
@@ -30,7 +26,7 @@ uint8_t ADS131M04_CB::init(){
     vRef = 2.048;
     gain = 1; 
     refMeasurement = false; 
-    convMode = ADS1220_SINGLE_SHOT;
+    convMode = ADS131M04_SINGLE_SHOT;
     _spi->begin();
     pinMode(csPin, OUTPUT);
     pinMode(drdyPin, INPUT);
@@ -39,45 +35,45 @@ uint8_t ADS131M04_CB::init(){
     reset();
     start();
     uint8_t ctrlVal = 0;
-    bypassPGA(true); // just a test if the ADS1220 is connected
-    ctrlVal = readRegister(ADS1220_CONF_REG_0);
+    bypassPGA(true); // just a test if the ADS131M04 is connected
+    ctrlVal = readRegister(ADS131M04_CONF_REG_0);
     ctrlVal = ctrlVal & 0x01;
     bypassPGA(false);
     return ctrlVal; 
 }
 
 void ADS131M04_CB::start(){
-    command(ADS1220_START);
+    command(ADS131M04_START);
 }
 
 void ADS131M04_CB::reset(){
-    command(ADS1220_RESET);
+    command(ADS131M04_RESET);
     delay(1);
 }
 
 void ADS131M04_CB::powerDown(){
-    command(ADS1220_PWRDOWN);
+    command(ADS131M04_PWRDOWN);
 }
 
 /* Configuration Register 0 settings */
 
-void ADS131M04_CB::setCompareChannels(ads1220Mux mux){
-    if((mux == ADS1220_MUX_REFPX_REFNX_4) || (mux == ADS1220_MUX_AVDD_M_AVSS_4)){
+void ADS131M04_CB::setCompareChannels(ADS131M04Mux mux){
+    if((mux == ADS131M04_MUX_REFPX_REFNX_4) || (mux == ADS131M04_MUX_AVDD_M_AVSS_4)){
         gain = 1;    // under these conditions gain is one by definition 
         refMeasurement = true; 
     }
     else{            // otherwise read gain from register
-        regValue = readRegister(ADS1220_CONF_REG_0);
+        regValue = readRegister(ADS131M04_CONF_REG_0);
         regValue = regValue & 0x0E;
         regValue = regValue>>1;
         gain = 1 << regValue;
         refMeasurement = false;
     }
-    regValue = readRegister(ADS1220_CONF_REG_0);
+    regValue = readRegister(ADS131M04_CONF_REG_0);
     regValue &= ~0xF1;
     regValue |= mux;
     regValue |= !(doNotBypassPgaIfPossible & 0x01);
-    writeRegister(ADS1220_CONF_REG_0, regValue);
+    writeRegister(ADS131M04_CONF_REG_0, regValue);
     if((mux >= 0x80) && (mux <=0xD0)){
         if(gain > 4){
             gain = 4;           // max gain is 4 if single-ended input is chosen or PGA is bypassed
@@ -86,12 +82,12 @@ void ADS131M04_CB::setCompareChannels(ads1220Mux mux){
     }
 }
 
-void ADS131M04_CB::setGain(ads1220Gain enumGain){
-    regValue = readRegister(ADS1220_CONF_REG_0);
-    ads1220Mux mux = (ads1220Mux)(regValue & 0xF0);
+void ADS131M04_CB::setGain(ADS131M04Gain enumGain){
+    regValue = readRegister(ADS131M04_CONF_REG_0);
+    ADS131M04Mux mux = (ADS131M04Mux)(regValue & 0xF0);
     regValue &= ~0x0E;
     regValue |= enumGain;
-    writeRegister(ADS1220_CONF_REG_0, regValue);
+    writeRegister(ADS131M04_CONF_REG_0, regValue);
     
     gain = 1<<(enumGain>>1);
     if((mux >= 0x80) && (mux <=0xD0)){
@@ -107,116 +103,116 @@ uint8_t ADS131M04_CB::getGainFactor(){
 }
 
 void ADS131M04_CB::bypassPGA(bool bypass){
-    regValue = readRegister(ADS1220_CONF_REG_0);
+    regValue = readRegister(ADS131M04_CONF_REG_0);
     regValue &= ~0x01;
     regValue |= bypass;
     doNotBypassPgaIfPossible = !(bypass & 0x01);
-    writeRegister(ADS1220_CONF_REG_0, regValue);
+    writeRegister(ADS131M04_CONF_REG_0, regValue);
 }
 
 bool ADS131M04_CB::isPGABypassed(){
-    regValue = readRegister(ADS1220_CONF_REG_0);
+    regValue = readRegister(ADS131M04_CONF_REG_0);
     return regValue & 0x01;
 }
 
 /* Configuration Register 1 settings */
 
-void ADS131M04_CB::setDataRate(ads1220DataRate rate){
-    regValue = readRegister(ADS1220_CONF_REG_1);
+void ADS131M04_CB::setDataRate(ADS131M04DataRate rate){
+    regValue = readRegister(ADS131M04_CONF_REG_1);
     regValue &= ~0xE0;
     regValue |= rate;
-    writeRegister(ADS1220_CONF_REG_1, regValue);
+    writeRegister(ADS131M04_CONF_REG_1, regValue);
 }
 
-void ADS131M04_CB::setOperatingMode(ads1220OpMode mode){
-    regValue = readRegister(ADS1220_CONF_REG_1);
+void ADS131M04_CB::setOperatingMode(ADS131M04OpMode mode){
+    regValue = readRegister(ADS131M04_CONF_REG_1);
     regValue &= ~0x18;
     regValue |= mode;
-    writeRegister(ADS1220_CONF_REG_1, regValue);
+    writeRegister(ADS131M04_CONF_REG_1, regValue);
 }
 
-void ADS131M04_CB::setConversionMode(ads1220ConvMode mode){
+void ADS131M04_CB::setConversionMode(ADS131M04ConvMode mode){
     convMode = mode;
-    regValue = readRegister(ADS1220_CONF_REG_1);
+    regValue = readRegister(ADS131M04_CONF_REG_1);
     regValue &= ~0x04;
     regValue |= mode;
-    writeRegister(ADS1220_CONF_REG_1, regValue);
+    writeRegister(ADS131M04_CONF_REG_1, regValue);
 }
 
 void ADS131M04_CB::enableTemperatureSensor(bool enable){
-    regValue = readRegister(ADS1220_CONF_REG_1);
+    regValue = readRegister(ADS131M04_CONF_REG_1);
     if(enable){
         regValue |= 0x02;
     }
     else{
         regValue &= ~0x02;
     }
-    writeRegister(ADS1220_CONF_REG_1, regValue);
+    writeRegister(ADS131M04_CONF_REG_1, regValue);
 }
 
 void ADS131M04_CB::enableBurnOutCurrentSources(bool enable){
-    regValue = readRegister(ADS1220_CONF_REG_1);
+    regValue = readRegister(ADS131M04_CONF_REG_1);
     if(enable){
         regValue |= 0x01;
     }
     else{
         regValue &= ~0x01;
     }
-    writeRegister(ADS1220_CONF_REG_1, regValue);
+    writeRegister(ADS131M04_CONF_REG_1, regValue);
 }
 
 /* Configuration Register 2 settings */
 
-void ADS131M04_CB::setVRefSource(ads1220VRef vRefSource){
-    regValue = readRegister(ADS1220_CONF_REG_2);
+void ADS131M04_CB::setVRefSource(ADS131M04VRef vRefSource){
+    regValue = readRegister(ADS131M04_CONF_REG_2);
     regValue &= ~0xC0;
     regValue |= vRefSource;
-    writeRegister(ADS1220_CONF_REG_2, regValue);
+    writeRegister(ADS131M04_CONF_REG_2, regValue);
 }
 
-void ADS131M04_CB::setFIRFilter(ads1220FIR fir){
-    regValue = readRegister(ADS1220_CONF_REG_2);
+void ADS131M04_CB::setFIRFilter(ADS131M04FIR fir){
+    regValue = readRegister(ADS131M04_CONF_REG_2);
     regValue &= ~0x30;
     regValue |= fir;
-    writeRegister(ADS1220_CONF_REG_2, regValue);
+    writeRegister(ADS131M04_CONF_REG_2, regValue);
 }
 
-void ADS131M04_CB::setLowSidePowerSwitch(ads1220PSW psw){
-    regValue = readRegister(ADS1220_CONF_REG_2);
+void ADS131M04_CB::setLowSidePowerSwitch(ADS131M04PSW psw){
+    regValue = readRegister(ADS131M04_CONF_REG_2);
     regValue &= ~0x08;
     regValue |= psw;
-    writeRegister(ADS1220_CONF_REG_2, regValue);
+    writeRegister(ADS131M04_CONF_REG_2, regValue);
 }
 
-void ADS131M04_CB::setIdacCurrent(ads1220IdacCurrent current){
-    regValue = readRegister(ADS1220_CONF_REG_2);
+void ADS131M04_CB::setIdacCurrent(ADS131M04IdacCurrent current){
+    regValue = readRegister(ADS131M04_CONF_REG_2);
     regValue &= ~0x07;
     regValue |= current;
-    writeRegister(ADS1220_CONF_REG_2, regValue);
+    writeRegister(ADS131M04_CONF_REG_2, regValue);
     delayMicroseconds(200);
 }
 
 /* Configuration Register 3 settings */
 
-void ADS131M04_CB::setIdac1Routing(ads1220IdacRouting route){
-    regValue = readRegister(ADS1220_CONF_REG_3);
+void ADS131M04_CB::setIdac1Routing(ADS131M04IdacRouting route){
+    regValue = readRegister(ADS131M04_CONF_REG_3);
     regValue &= ~0xE0;
     regValue |= (route<<5);
-    writeRegister(ADS1220_CONF_REG_3, regValue);
+    writeRegister(ADS131M04_CONF_REG_3, regValue);
 }
 
-void ADS131M04_CB::setIdac2Routing(ads1220IdacRouting route){
-    regValue = readRegister(ADS1220_CONF_REG_3);
+void ADS131M04_CB::setIdac2Routing(ADS131M04IdacRouting route){
+    regValue = readRegister(ADS131M04_CONF_REG_3);
     regValue &= ~0x1C;
     regValue |= (route<<2);
-    writeRegister(ADS1220_CONF_REG_3, regValue);
+    writeRegister(ADS131M04_CONF_REG_3, regValue);
 }
 
-void ADS131M04_CB::setDrdyMode(ads1220DrdyMode mode){
-    regValue = readRegister(ADS1220_CONF_REG_3);
+void ADS131M04_CB::setDrdyMode(ADS131M04DrdyMode mode){
+    regValue = readRegister(ADS131M04_CONF_REG_3);
     regValue &= ~0x02;
     regValue |= mode;
-    writeRegister(ADS1220_CONF_REG_3, regValue);
+    writeRegister(ADS131M04_CONF_REG_3, regValue);
 }
 
 /* Other settings */
@@ -235,8 +231,8 @@ float ADS131M04_CB::getVRef_V(){
 
 void ADS131M04_CB::setAvddAvssAsVrefAndCalibrate(){
     float avssVoltage = 0.0;
-    setVRefSource(ADS1220_VREF_AVDD_AVSS);  
-    setCompareChannels(ADS1220_MUX_AVDD_M_AVSS_4);
+    setVRefSource(ADS131M04_VREF_AVDD_AVSS);  
+    setCompareChannels(ADS131M04_MUX_AVDD_M_AVSS_4);
     for(int i = 0; i<10; i++){
         avssVoltage += getVoltage_mV();
     }
@@ -245,8 +241,8 @@ void ADS131M04_CB::setAvddAvssAsVrefAndCalibrate(){
 
 void ADS131M04_CB::setRefp0Refn0AsVefAndCalibrate(){
     float ref0Voltage = 0.0;
-    setVRefSource(ADS1220_VREF_REFP0_REFN0);
-    setCompareChannels(ADS1220_MUX_REFPX_REFNX_4);
+    setVRefSource(ADS131M04_VREF_REFP0_REFN0);
+    setCompareChannels(ADS131M04_MUX_REFPX_REFNX_4);
     for(int i = 0; i<10; i++){
         ref0Voltage += getVoltage_mV();
     }
@@ -255,8 +251,8 @@ void ADS131M04_CB::setRefp0Refn0AsVefAndCalibrate(){
 
 void ADS131M04_CB::setRefp1Refn1AsVefAndCalibrate(){
     float ref1Voltage = 0.0;
-    setVRefSource(ADS1220_VREF_REFP1_REFN1);
-    setCompareChannels(ADS1220_MUX_REFPX_REFNX_4);
+    setVRefSource(ADS131M04_VREF_REFP1_REFN1);
+    setCompareChannels(ADS131M04_MUX_REFPX_REFNX_4);
     for(int i = 0; i<10; i++){
         ref1Voltage += getVoltage_mV();
     }
@@ -264,7 +260,7 @@ void ADS131M04_CB::setRefp1Refn1AsVefAndCalibrate(){
 }
 
 void ADS131M04_CB::setIntVRef(){
-    setVRefSource(ADS1220_VREF_REFP1_REFN1);
+    setVRefSource(ADS131M04_VREF_REFP1_REFN1);
     vRef = 2.048;
 }
     
@@ -274,10 +270,10 @@ float ADS131M04_CB::getVoltage_mV(){
     int32_t rawData = getData();
     float resultInMV = 0.0;
     if(refMeasurement){
-        resultInMV = (rawData / ADS1220_RANGE) * 2.048 * 1000.0 / (gain * 1.0);
+        resultInMV = (rawData / ADS131M04_RANGE) * 2.048 * 1000.0 / (gain * 1.0);
     }
     else{
-        resultInMV = (rawData / ADS1220_RANGE) * vRef * 1000.0 / (gain * 1.0);
+        resultInMV = (rawData / ADS131M04_RANGE) * vRef * 1000.0 / (gain * 1.0);
     }
     return resultInMV;
 }
@@ -309,9 +305,9 @@ float ADS131M04_CB::getTemperature(){
 *************************************************/
 
 void ADS131M04_CB::forcedBypassPGA(){
-    regValue = readRegister(ADS1220_CONF_REG_0);
+    regValue = readRegister(ADS131M04_CONF_REG_0);
     regValue |= 0x01;
-    writeRegister(ADS1220_CONF_REG_0, regValue);
+    writeRegister(ADS131M04_CONF_REG_0, regValue);
 }
 
 int32_t ADS131M04_CB::getData(){
@@ -325,7 +321,7 @@ uint32_t ADS131M04_CB::readResult(){
     uint8_t buf[3];
     uint32_t rawResult = 0;
 
-    if(convMode == ADS1220_SINGLE_SHOT){
+    if(convMode == ADS131M04_SINGLE_SHOT){
         start();
     }
     while(digitalRead(drdyPin) == HIGH) {}           
@@ -351,7 +347,7 @@ uint8_t ADS131M04_CB::readRegister(uint8_t reg){
     
     _spi->beginTransaction(mySPISettings);
     digitalWrite(csPin, LOW);
-    _spi->transfer(ADS1220_RREG | (reg<<2)); 
+    _spi->transfer(ADS131M04_RREG | (reg<<2)); 
     regValue = _spi->transfer(0x00);
     digitalWrite(csPin, HIGH);
     _spi->endTransaction();
@@ -362,7 +358,7 @@ uint8_t ADS131M04_CB::readRegister(uint8_t reg){
 void ADS131M04_CB::writeRegister(uint8_t reg, uint8_t val){
     _spi->beginTransaction(mySPISettings);
     digitalWrite(csPin, LOW);
-    _spi->transfer(ADS1220_WREG | (reg<<2)); 
+    _spi->transfer(ADS131M04_WREG | (reg<<2)); 
     _spi->transfer(val);
     digitalWrite(csPin, HIGH);
     _spi->endTransaction();
