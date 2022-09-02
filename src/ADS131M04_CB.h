@@ -1,8 +1,12 @@
 /******************************************************************************
  *
- * This is a library for the 24 bit, 4 channel ADS131M04 A/D Converter
+ * This is a library/example for the 24 bit, 4 channel ADS131M04 A/D Converter
  *
- * I added several examples sketches which should enable you to use the library.
+ * This library is based on Imperial College London Rocketry
+ * Created by Daniele Valentino Bella & Iris Clercq-Roques
+ *
+ * A number of changes were made including the use of an external OSC instead
+ * of ESP32-generated PWM for clock.
  *
  * You are free to use it, change it or build on it. In case you like it, it would
  * be cool if you give it a star.
@@ -12,201 +16,70 @@
  * Written by CoolBitts LLC
  * info@coolbitts.com
  *
+ * ADC Product information: https://www.ti.com/product/ADS131M04
+ * ADC Datasheet: https://www.ti.com/lit/gpn/ads131m04
+ *
  ******************************************************************************/
 
 #ifndef ADS131M04_CB_H_
 #define ADS131M04_CB_H_
 
-#if (ARDUINO >= 100)
- #include "Arduino.h"
-#else
- #include "WProgram.h"
-#endif
-#include<SPI.h>
+#define CLKIN_SPD 8192000 // CLKIN input frequency
+#define SCLK_SPD 25000000 // SPI SCLK output frequency
 
-//ADS131M04 SPI commands
-#define ADS131M04_RESET       0x06    
-#define ADS131M04_START       0x08    //Send the START/SYNC command (08h) to start converting in continuous conversion mode
-#define ADS131M04_PWRDOWN     0x02
-#define ADS131M04_RDATA       0x10
-#define ADS131M04_WREG        0x40    // write register
-#define ADS131M04_RREG        0x20    // read register
+#define ADS131M04_REG_ID            0x00
+#define ADS131M04_REG_STATUS        0x01
+#define ADS131M04_REG_MODE          0x02
+#define ADS131M04_REG_CLOCK         0x03
+#define ADS131M04_REG_GAIN1         0x04
+#define ADS131M04_REG_CFG           0x06
+#define ADS131M04_REG_THRSHLD_MSB   0x07
+#define ADS131M04_REG_THRSHLD_LSB   0x08
+#define ADS131M04_REG_CH0_CFG       0x09
+#define ADS131M04_REG_CH0_OCAL_MSB  0x0A
+#define ADS131M04_REG_CH0_OCAL_LSB  0x0B
+#define ADS131M04_REG_CH0_GCAL_MSB  0x0C
+#define ADS131M04_REG_CH0_GCAL_LSB  0x0D
+#define ADS131M04_REG_CH1_CFG       0x0E
+#define ADS131M04_REG_CH1_OCAL_MSB  0x0F
+#define ADS131M04_REG_CH1_OCAL_LSB  0x10
+#define ADS131M04_REG_CH1_GCAL_MSB  0x11
+#define ADS131M04_REG_CH1_GCAL_LSB  0x12
+#define ADS131M04_REG_CH2_CFG       0x13
+#define ADS131M04_REG_CH2_OCAL_MSB  0x14
+#define ADS131M04_REG_CH2_OCAL_LSB  0x15
+#define ADS131M04_REG_CH2_GCAL_MSB  0x16
+#define ADS131M04_REG_CH2_GCAL_LSB  0x17
+#define ADS131M04_REG_CH3_CFG       0x18
+#define ADS131M04_REG_CH3_OCAL_MSB  0x19
+#define ADS131M04_REG_CH3_OCAL_LSB  0x1A
+#define ADS131M04_REG_CH3_GCAL_MSB  0x1B
+#define ADS131M04_REG_CH3_GCAL_LSB  0x1C
+#define ADS131M04_REG_REGMAP_CRC    0x3E
+#define ADS131M04_REG_RESERVED      0x3F
 
-/* registers */
-#define ADS131M04_CONF_REG_0  0x00
-#define ADS131M04_CONF_REG_1  0x01
-#define ADS131M04_CONF_REG_2  0x02
-#define ADS131M04_CONF_REG_3  0x03
+#include <Arduino.h>
+#include <SPI.h>
 
-/* other */
-#define ADS131M04_RANGE 8388607.0 // = 2^23 - 1
+class ADS131M04_CB {
+  public:
+    ADS131M04_CB(int8_t _csPin, int8_t _drdyPin, SPIClass* _spi);
+    void begin(void);
+    void rawChannels(int8_t * channelArrPtr, int8_t channelArrLen, int32_t * outputArrPtr);
+    int32_t rawChannelSingle(int8_t channel);
+    uint16_t readReg(uint8_t reg);
+    bool writeReg(uint8_t reg, uint16_t data);
+    bool setGain(uint8_t log2Gain0 = 0, uint8_t log2Gain1 = 0, uint8_t log2Gain2 = 0, uint8_t log2Gain3 = 0);
+    bool globalChop(bool enabled = false, uint8_t log2delay = 4);
 
-typedef enum ADS131M04_MUX {
-    ADS131M04_MUX_0_1     = 0x00,   //default
-    ADS131M04_MUX_0_2     = 0x10,
-    ADS131M04_MUX_0_3     = 0x20,
-    ADS131M04_MUX_1_2     = 0x30,
-    ADS131M04_MUX_1_3     = 0x40,
-    ADS131M04_MUX_2_3     = 0x50,
-    ADS131M04_MUX_1_0     = 0x60,
-    ADS131M04_MUX_3_2     = 0x70,
-    ADS131M04_MUX_0_AVSS  = 0x80,
-    ADS131M04_MUX_1_AVSS  = 0x90,
-    ADS131M04_MUX_2_AVSS  = 0xA0,
-    ADS131M04_MUX_3_AVSS  = 0xB0,
-    ADS131M04_MUX_REFPX_REFNX_4 = 0xC0,
-    ADS131M04_MUX_AVDD_M_AVSS_4 = 0xD0,
-    ADS131M04_MUX_AVDD_P_AVSS_2 = 0xE0
-} ADS131M04Mux;
-
-typedef enum ADS131M04_GAIN {
-    ADS131M04_GAIN_1   = 0x00,   //default
-    ADS131M04_GAIN_2   = 0x02,
-    ADS131M04_GAIN_4   = 0x04,
-    ADS131M04_GAIN_8   = 0x06,
-    ADS131M04_GAIN_16  = 0x08,
-    ADS131M04_GAIN_32  = 0x0A,
-    ADS131M04_GAIN_64  = 0x0C,
-    ADS131M04_GAIN_128 = 0x0E
-} ADS131M04Gain;
-
-typedef enum ADS131M04_DATA_RATE {
-    ADS131M04_DR_LVL_0 = 0x00,   // default
-    ADS131M04_DR_LVL_1 = 0x20,
-    ADS131M04_DR_LVL_2 = 0x40,
-    ADS131M04_DR_LVL_3 = 0x60,
-    ADS131M04_DR_LVL_4 = 0x80,
-    ADS131M04_DR_LVL_5 = 0xA0,
-    ADS131M04_DR_LVL_6 = 0xC0
-} ADS131M04DataRate;
-
-typedef enum ADS131M04_OP_MODE {      
-    ADS131M04_NORMAL_MODE     = 0x00,  // default
-    ADS131M04_DUTY_CYCLE_MODE = 0x08,
-    ADS131M04_TURBO_MODE      = 0x10
-} ADS131M04OpMode;
-
-typedef enum ADS131M04_CONV_MODE {
-    ADS131M04_SINGLE_SHOT     = 0x00,  // default
-    ADS131M04_CONTINUOUS      = 0x04
-} ADS131M04ConvMode;
-
-typedef enum ADS131M04_VREF{
-    ADS131M04_VREF_INT            = 0x00,  // default
-    ADS131M04_VREF_REFP0_REFN0    = 0x40,
-    ADS131M04_VREF_REFP1_REFN1    = 0x80,
-    ADS131M04_VREF_AVDD_AVSS      = 0xC0
-} ADS131M04VRef;
-
-typedef enum ADS131M04_FIR{
-    ADS131M04_NONE        = 0x00,   // default
-    ADS131M04_50HZ_60HZ   = 0x10,
-    ADS131M04_50HZ        = 0x20,
-    ADS131M04_60HZ        = 0x30
-} ADS131M04FIR;
-
-typedef enum ADS131M04_PSW {
-    ADS131M04_ALWAYS_OPEN = 0x00,  // default
-    ADS131M04_SWITCH      = 0x08
-} ADS131M04PSW;
-
-typedef enum ADS131M04_IDAC_CURRENT {
-    ADS131M04_IDAC_OFF        = 0x00,  // defaulr
-    ADS131M04_IDAC_10_MU_A    = 0x01,
-    ADS131M04_IDAC_50_MU_A    = 0x02,
-    ADS131M04_IDAC_100_MU_A   = 0x03,
-    ADS131M04_IDAC_250_MU_A   = 0x04,
-    ADS131M04_IDAC_500_MU_A   = 0x05,
-    ADS131M04_IDAC_1000_MU_A  = 0x06,
-    ADS131M04_IDAC_1500_MU_A  = 0x07
-} ADS131M04IdacCurrent;
-
-typedef enum ADS131M04_IDAC_ROUTING {
-    ADS131M04_IDAC_NONE       = 0x00,  // default
-    ADS131M04_IDAC_AIN0_REFP1 = 0x01,
-    ADS131M04_IDAC_AIN1       = 0x02,
-    ADS131M04_IDAC_AIN2       = 0x03,
-    ADS131M04_IDAC_AIN3_REFN1 = 0x04,
-    ADS131M04_IDAC_REFP0      = 0x05,
-    ADS131M04_IDAC_REFN0      = 0x06,
-} ADS131M04IdacRouting;
-
-typedef enum ADS131M04_DRDY_MODE {
-    ADS131M04_DRDY      = 0x00,   // default
-    ADS131M04_DOUT_DRDY = 0x02
-} ADS131M04DrdyMode;
-
-/* other */
-
-class ADS131M04_CB
-{
-public:
-    ADS131M04_CB(int cs, int drdy, SPIClass *s = &SPI);
+  private:
+    int8_t csPin, drdyPin;
+    SPIClass* spi;
+    bool initialised;
     
-    /* Commands */
-    uint8_t init();
-    void start();
-    void reset();
-    void powerDown();
-    
-    /* Configuration Register 0 settings */
-    void setCompareChannels(ADS131M04Mux mux);
-    void setGain(ADS131M04Gain gain);
-    uint8_t getGainFactor();
-    void bypassPGA(bool bypass);
-    bool isPGABypassed();
-    
-    /* Configuration Register 1 settings */
-    void setDataRate(ADS131M04DataRate rate);
-    void setOperatingMode(ADS131M04OpMode mode);
-    void setConversionMode(ADS131M04ConvMode mode);
-    void enableTemperatureSensor(bool enable);
-    void enableBurnOutCurrentSources(bool enable);
-    
-    /* Configuration Register 2 settings */
-    void setVRefSource(ADS131M04VRef vRefSource);
-    void setFIRFilter(ADS131M04FIR fir);
-    void setLowSidePowerSwitch(ADS131M04PSW psw);
-    void setIdacCurrent(ADS131M04IdacCurrent current);
-    
-    /* Configuration Register 3 settings */
-    void setIdac1Routing(ADS131M04IdacRouting route);
-    void setIdac2Routing(ADS131M04IdacRouting route);
-    void setDrdyMode(ADS131M04DrdyMode mode);
-    
-    /* Other settings */
-    void setSPIClockSpeed(unsigned long clock);
-    void setVRefValue_V(float refVal);
-    float getVRef_V();
-    void setAvddAvssAsVrefAndCalibrate();
-    void setRefp0Refn0AsVefAndCalibrate();
-    void setRefp1Refn1AsVefAndCalibrate();
-    void setIntVRef();
-    
-    /* Results */
-    float getVoltage_mV();
-    float getVoltage_muV();
-    int32_t getRawData();
-    float getTemperature();
-
-private:
-    SPIClass *_spi;
-    SPISettings mySPISettings;
-    int16_t csPin;
-    int16_t drdyPin;
-    uint8_t regValue;
-    float vRef;
-    uint8_t gain;
-    bool refMeasurement; 
-    bool doNotBypassPgaIfPossible;
-    ADS131M04ConvMode convMode;
-
-    void forcedBypassPGA();
-    int32_t getData();
-    uint32_t readResult();
-    uint8_t readRegister(uint8_t reg);
-    void writeRegister(uint8_t reg, uint8_t val);
-    void command(uint8_t cmd);
+    void spiCommFrame(uint32_t * outputArray, uint16_t command = 0x0000);
+    uint32_t spiTransferWord(uint16_t inputData = 0x0000);
+    int32_t twoCompDeco(uint32_t data);
 };
 
 #endif

@@ -1,8 +1,12 @@
 /******************************************************************************
  *
- * This is a library for the 24 bit, 4 channel ADS131M04 A/D Converter
+ * This is a library/example for the 24 bit, 4 channel ADS131M04 A/D Converter
  *
- * I added several examples sketches which should enable you to use the library.
+ * This library is based on Imperial College London Rocketry
+ * Created by Daniele Valentino Bella & Iris Clercq-Roques
+ *
+ * A number of changes were made including the use of an external OSC instead
+ * of ESP32-generated PWM for clock.
  *
  * You are free to use it, change it or build on it. In case you like it, it would
  * be cool if you give it a star.
@@ -12,363 +16,214 @@
  * Written by CoolBitts LLC
  * info@coolbitts.com
  *
+ * ADC Product information: https://www.ti.com/product/ADS131M04
+ * ADC Datasheet: https://www.ti.com/lit/gpn/ads131m04
+ *
  ******************************************************************************/
 
+#include <Arduino.h>
+#include <SPI.h>
 #include "ADS131M04_CB.h"
 
-ADS131M04_CB::ADS131M04_CB(int cs, int drdy, SPIClass *s){
-    csPin = cs;
-    drdyPin = drdy;
-    _spi = s;
+ADS131M04_CB::ADS131M04_CB(int8_t _csPin, int8_t _drdyPin, SPIClass* _spi) {
+  csPin = _csPin;
+  drdyPin = _drdyPin;
+  spi = _spi;
+  initialised = false;
 }
 
-uint8_t ADS131M04_CB::init(){
-    vRef = 2.048;
-    gain = 1; 
-    refMeasurement = false; 
-    convMode = ADS131M04_SINGLE_SHOT;
-    _spi->begin();
-    pinMode(csPin, OUTPUT);
-    pinMode(drdyPin, INPUT);
-    digitalWrite(csPin, HIGH);
-    mySPISettings = SPISettings(4000000, MSBFIRST, SPI_MODE1); 
-    reset();
-    start();
-    uint8_t ctrlVal = 0;
-    bypassPGA(true); // just a test if the ADS131M04 is connected
-    ctrlVal = readRegister(ADS131M04_CONF_REG_0);
-    ctrlVal = ctrlVal & 0x01;
-    bypassPGA(false);
-    return ctrlVal; 
+void ADS131M04_CB::begin(void) {
+  pinMode(csPin, OUTPUT);
+  digitalWrite(csPin, HIGH);
+  pinMode(drdyPin, INPUT);
+
+  spi->begin();
+
+  initialised=true;
 }
 
-void ADS131M04_CB::start(){
-    command(ADS131M04_START);
-}
+void ADS131M04_CB::rawChannels(int8_t * channelArrPtr, int8_t channelArrLen, int32_t * outputArrPtr) {
+  /* Writes data from the channels specified in channelArr, to outputArr,
+     in the correct order.
 
-void ADS131M04_CB::reset(){
-    command(ADS131M04_RESET);
-    delay(1);
-}
-
-void ADS131M04_CB::powerDown(){
-    command(ADS131M04_PWRDOWN);
-}
-
-/* Configuration Register 0 settings */
-
-void ADS131M04_CB::setCompareChannels(ADS131M04Mux mux){
-    if((mux == ADS131M04_MUX_REFPX_REFNX_4) || (mux == ADS131M04_MUX_AVDD_M_AVSS_4)){
-        gain = 1;    // under these conditions gain is one by definition 
-        refMeasurement = true; 
-    }
-    else{            // otherwise read gain from register
-        regValue = readRegister(ADS131M04_CONF_REG_0);
-        regValue = regValue & 0x0E;
-        regValue = regValue>>1;
-        gain = 1 << regValue;
-        refMeasurement = false;
-    }
-    regValue = readRegister(ADS131M04_CONF_REG_0);
-    regValue &= ~0xF1;
-    regValue |= mux;
-    regValue |= !(doNotBypassPgaIfPossible & 0x01);
-    writeRegister(ADS131M04_CONF_REG_0, regValue);
-    if((mux >= 0x80) && (mux <=0xD0)){
-        if(gain > 4){
-            gain = 4;           // max gain is 4 if single-ended input is chosen or PGA is bypassed
-        }
-        forcedBypassPGA();
-    }
-}
-
-void ADS131M04_CB::setGain(ADS131M04Gain enumGain){
-    regValue = readRegister(ADS131M04_CONF_REG_0);
-    ADS131M04Mux mux = (ADS131M04Mux)(regValue & 0xF0);
-    regValue &= ~0x0E;
-    regValue |= enumGain;
-    writeRegister(ADS131M04_CONF_REG_0, regValue);
-    
-    gain = 1<<(enumGain>>1);
-    if((mux >= 0x80) && (mux <=0xD0)){
-        if(gain > 4){
-            gain = 4;   // max gain is 4 if single-ended input is chosen or PGA is bypassed
-        }
-        forcedBypassPGA();
-    }
-}
-
-uint8_t ADS131M04_CB::getGainFactor(){
-    return gain;
-}
-
-void ADS131M04_CB::bypassPGA(bool bypass){
-    regValue = readRegister(ADS131M04_CONF_REG_0);
-    regValue &= ~0x01;
-    regValue |= bypass;
-    doNotBypassPgaIfPossible = !(bypass & 0x01);
-    writeRegister(ADS131M04_CONF_REG_0, regValue);
-}
-
-bool ADS131M04_CB::isPGABypassed(){
-    regValue = readRegister(ADS131M04_CONF_REG_0);
-    return regValue & 0x01;
-}
-
-/* Configuration Register 1 settings */
-
-void ADS131M04_CB::setDataRate(ADS131M04DataRate rate){
-    regValue = readRegister(ADS131M04_CONF_REG_1);
-    regValue &= ~0xE0;
-    regValue |= rate;
-    writeRegister(ADS131M04_CONF_REG_1, regValue);
-}
-
-void ADS131M04_CB::setOperatingMode(ADS131M04OpMode mode){
-    regValue = readRegister(ADS131M04_CONF_REG_1);
-    regValue &= ~0x18;
-    regValue |= mode;
-    writeRegister(ADS131M04_CONF_REG_1, regValue);
-}
-
-void ADS131M04_CB::setConversionMode(ADS131M04ConvMode mode){
-    convMode = mode;
-    regValue = readRegister(ADS131M04_CONF_REG_1);
-    regValue &= ~0x04;
-    regValue |= mode;
-    writeRegister(ADS131M04_CONF_REG_1, regValue);
-}
-
-void ADS131M04_CB::enableTemperatureSensor(bool enable){
-    regValue = readRegister(ADS131M04_CONF_REG_1);
-    if(enable){
-        regValue |= 0x02;
-    }
-    else{
-        regValue &= ~0x02;
-    }
-    writeRegister(ADS131M04_CONF_REG_1, regValue);
-}
-
-void ADS131M04_CB::enableBurnOutCurrentSources(bool enable){
-    regValue = readRegister(ADS131M04_CONF_REG_1);
-    if(enable){
-        regValue |= 0x01;
-    }
-    else{
-        regValue &= ~0x01;
-    }
-    writeRegister(ADS131M04_CONF_REG_1, regValue);
-}
-
-/* Configuration Register 2 settings */
-
-void ADS131M04_CB::setVRefSource(ADS131M04VRef vRefSource){
-    regValue = readRegister(ADS131M04_CONF_REG_2);
-    regValue &= ~0xC0;
-    regValue |= vRefSource;
-    writeRegister(ADS131M04_CONF_REG_2, regValue);
-}
-
-void ADS131M04_CB::setFIRFilter(ADS131M04FIR fir){
-    regValue = readRegister(ADS131M04_CONF_REG_2);
-    regValue &= ~0x30;
-    regValue |= fir;
-    writeRegister(ADS131M04_CONF_REG_2, regValue);
-}
-
-void ADS131M04_CB::setLowSidePowerSwitch(ADS131M04PSW psw){
-    regValue = readRegister(ADS131M04_CONF_REG_2);
-    regValue &= ~0x08;
-    regValue |= psw;
-    writeRegister(ADS131M04_CONF_REG_2, regValue);
-}
-
-void ADS131M04_CB::setIdacCurrent(ADS131M04IdacCurrent current){
-    regValue = readRegister(ADS131M04_CONF_REG_2);
-    regValue &= ~0x07;
-    regValue |= current;
-    writeRegister(ADS131M04_CONF_REG_2, regValue);
-    delayMicroseconds(200);
-}
-
-/* Configuration Register 3 settings */
-
-void ADS131M04_CB::setIdac1Routing(ADS131M04IdacRouting route){
-    regValue = readRegister(ADS131M04_CONF_REG_3);
-    regValue &= ~0xE0;
-    regValue |= (route<<5);
-    writeRegister(ADS131M04_CONF_REG_3, regValue);
-}
-
-void ADS131M04_CB::setIdac2Routing(ADS131M04IdacRouting route){
-    regValue = readRegister(ADS131M04_CONF_REG_3);
-    regValue &= ~0x1C;
-    regValue |= (route<<2);
-    writeRegister(ADS131M04_CONF_REG_3, regValue);
-}
-
-void ADS131M04_CB::setDrdyMode(ADS131M04DrdyMode mode){
-    regValue = readRegister(ADS131M04_CONF_REG_3);
-    regValue &= ~0x02;
-    regValue |= mode;
-    writeRegister(ADS131M04_CONF_REG_3, regValue);
-}
-
-/* Other settings */
-
-void ADS131M04_CB::setSPIClockSpeed(unsigned long clock){
-    mySPISettings = SPISettings(clock, MSBFIRST, SPI_MODE1);
-}
-
-void ADS131M04_CB::setVRefValue_V(float refVal){
-    vRef = refVal;
-}
-
-float ADS131M04_CB::getVRef_V(){
-    return vRef;
-}
-
-void ADS131M04_CB::setAvddAvssAsVrefAndCalibrate(){
-    float avssVoltage = 0.0;
-    setVRefSource(ADS131M04_VREF_AVDD_AVSS);  
-    setCompareChannels(ADS131M04_MUX_AVDD_M_AVSS_4);
-    for(int i = 0; i<10; i++){
-        avssVoltage += getVoltage_mV();
-    }
-    vRef = avssVoltage * 4.0 / 10000.0; 
-}
-
-void ADS131M04_CB::setRefp0Refn0AsVefAndCalibrate(){
-    float ref0Voltage = 0.0;
-    setVRefSource(ADS131M04_VREF_REFP0_REFN0);
-    setCompareChannels(ADS131M04_MUX_REFPX_REFNX_4);
-    for(int i = 0; i<10; i++){
-        ref0Voltage += getVoltage_mV();
-    }
-    vRef = ref0Voltage * 4.0 / 10000.0; 
-}
-
-void ADS131M04_CB::setRefp1Refn1AsVefAndCalibrate(){
-    float ref1Voltage = 0.0;
-    setVRefSource(ADS131M04_VREF_REFP1_REFN1);
-    setCompareChannels(ADS131M04_MUX_REFPX_REFNX_4);
-    for(int i = 0; i<10; i++){
-        ref1Voltage += getVoltage_mV();
-    }
-    vRef = ref1Voltage * 4.0 / 10000.0; 
-}
-
-void ADS131M04_CB::setIntVRef(){
-    setVRefSource(ADS131M04_VREF_REFP1_REFN1);
-    vRef = 2.048;
-}
-    
-
-/* Results */
-float ADS131M04_CB::getVoltage_mV(){
-    int32_t rawData = getData();
-    float resultInMV = 0.0;
-    if(refMeasurement){
-        resultInMV = (rawData / ADS131M04_RANGE) * 2.048 * 1000.0 / (gain * 1.0);
-    }
-    else{
-        resultInMV = (rawData / ADS131M04_RANGE) * vRef * 1000.0 / (gain * 1.0);
-    }
-    return resultInMV;
-}
-
-float ADS131M04_CB::getVoltage_muV(){
-    return getVoltage_mV() * 1000.0;
-}
-
-int32_t ADS131M04_CB::getRawData(){
-    return getData();
-}
-
-float ADS131M04_CB::getTemperature(){
-    enableTemperatureSensor(true);
-    uint32_t rawResult = readResult();
-    enableTemperatureSensor(false);
-    
-    uint16_t result = (uint16_t)(rawResult >> 18);
-    if(result>>13){
-        result = ~(result-1) & 0x3777;
-        return result * (-0.03125);
-    }
+     channelArr should have values from 0-3, and channelArrLen should be the
+     length of that array, starting from 1.
+  */
   
-    return result * 0.03125;
+  uint32_t rawDataArr[6];
+
+  // Get data
+  spiCommFrame(&rawDataArr[0]);
+  
+  // Save the decoded data for each of the channels
+  for (int8_t i = 0; i<channelArrLen; i++) {
+    *outputArrPtr = twoCompDeco(rawDataArr[*channelArrPtr+1]);
+    outputArrPtr++;
+    channelArrPtr++;
+  }
+}
+
+int32_t ADS131M04_CB::rawChannelSingle(int8_t channel) {
+  /* Returns raw value from a single channel
+     channel input from 0-3
+  */
+  
+  int32_t outputArr[1];
+  int8_t channelArr[1] = {channel};
+
+  rawChannels(&channelArr[0], 1, &outputArr[0]);
+
+  return outputArr[0];
+}
+
+bool ADS131M04_CB::globalChop(bool enabled, uint8_t log2delay) {
+  /* Function to configure global chop mode for the ADS131M04.
+
+     INPUTS:
+     enabled - Whether to enable global-chop mode.
+     log2delay   - Base 2 log of the desired delay in modulator clocks periods
+     before measurment begins
+     Possible values are between and including 1 and 16, to give delays
+     between 2 and 65536 clock periods respectively
+     For more information, refer to the datasheet.
+
+     Returns true if settings were written succesfully.
+  */
+
+  uint8_t delayRegData = log2delay - 1;
+
+  // Get current settings for current detect mode from the CFG register
+  uint16_t currentDetSett = (readReg(ADS131M04_REG_CFG) << 8) >>8;
+  
+  uint16_t newRegData = (delayRegData << 12) + (enabled << 8) + currentDetSett;
+
+  return writeReg(ADS131M04_REG_CFG, newRegData);
+}
+
+bool ADS131M04_CB::writeReg(uint8_t reg, uint16_t data) {
+  /* Writes the content of data to the register reg
+     Returns true if successful
+  */
+  
+  uint8_t commandPref = 0x06;
+
+  // Make command word using syntax found in data sheet
+  uint16_t commandWord = (commandPref<<12) + (reg<<7);
+
+  digitalWrite(csPin, LOW);
+  spi->beginTransaction(SPISettings(SCLK_SPD, MSBFIRST, SPI_MODE1));
+
+  spiTransferWord(commandWord);
+  
+  spiTransferWord(data);
+
+  // Send 4 empty words
+  for (uint8_t i=0; i<4; i++) {
+    spiTransferWord();
+  }
+
+  spi->endTransaction();
+  digitalWrite(csPin, HIGH);
+
+  // Get response
+  uint32_t responseArr[6];
+  spiCommFrame(&responseArr[0]);
+
+  if ( ( (0x04<<12) + (reg<<7) ) == responseArr[0]) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+bool ADS131M04_CB::setGain(uint8_t log2Gain0, uint8_t log2gainCommand, uint8_t log2Gain2, uint8_t log2Gain3) {
+  /* Function to set the gain of the four channels of the ADC
+     
+     Inputs are the log base 2 of the desired gain to be applied to each
+     channel.
+
+     Returns true if gain was succesfully set.
+
+     Function written by Iris Clercq-Roques
+  */
+  uint16_t gainCommand=log2Gain3<<4;
+  gainCommand+=log2Gain2;
+  gainCommand<<=8;
+  gainCommand+=(log2gainCommand<<4);
+  gainCommand+=log2Gain0;
+  return writeReg(ADS131M04_REG_GAIN1, gainCommand);
+}
+
+uint16_t ADS131M04_CB::readReg(uint8_t reg) {
+  /* Reads the content of single register found at address reg
+     Returns register value
+  */
+  
+  uint8_t commandPref = 0x0A;
+
+  // Make command word using syntax found in data sheet
+  uint16_t commandWord = (commandPref << 12) + (reg << 7);
+
+  uint32_t responseArr[6];
+
+  // Use first frame to send command
+  spiCommFrame(&responseArr[0], commandWord);
+
+  // Read response
+  spiCommFrame(&responseArr[0]);
+
+  return responseArr[0] >> 16;
 }
 
 /************************************************ 
     private functions
 *************************************************/
+uint32_t ADS131M04_CB::spiTransferWord(uint16_t inputData) {
+  /* Transfer a 24 bit word
+     Data returned is MSB aligned
+  */ 
 
-void ADS131M04_CB::forcedBypassPGA(){
-    regValue = readRegister(ADS131M04_CONF_REG_0);
-    regValue |= 0x01;
-    writeRegister(ADS131M04_CONF_REG_0, regValue);
+  uint32_t data = spi->transfer(inputData >> 8);
+  data <<= 8;
+  data |= spi->transfer((inputData<<8) >> 8);
+  data <<= 8;
+  data |= spi->transfer(0x00);
+
+  return data << 8;
 }
 
-int32_t ADS131M04_CB::getData(){
-    uint32_t rawResult = readResult();
-    int32_t result = ((int32_t)(rawResult)) >> 8;
-    
-    return result;
+void ADS131M04_CB::spiCommFrame(uint32_t * outPtr, uint16_t command) {
+  // Saves all the data of a communication frame to an array with pointer outPtr
+
+  digitalWrite(csPin, LOW);
+
+  spi->beginTransaction(SPISettings(SCLK_SPD, MSBFIRST, SPI_MODE1));
+
+  // Send the command in the first word
+  *outPtr = spiTransferWord(command);
+
+  // For the next 4 words, just read the data
+  for (uint8_t i=1; i < 5; i++) {
+    outPtr++;
+    *outPtr = spiTransferWord() >> 8;
+  }
+
+  // Save CRC bits
+  outPtr++;
+  *outPtr = spiTransferWord();
+
+  spi->endTransaction();
+
+  digitalWrite(csPin, HIGH);
 }
 
-uint32_t ADS131M04_CB::readResult(){
-    uint8_t buf[3];
-    uint32_t rawResult = 0;
+int32_t ADS131M04_CB::twoCompDeco(uint32_t data) {
+  // Take the two's complement of the data
 
-    if(convMode == ADS131M04_SINGLE_SHOT){
-        start();
-    }
-    while(digitalRead(drdyPin) == HIGH) {}           
-    
-    _spi->beginTransaction(mySPISettings);
-    digitalWrite(csPin, LOW);
-    buf[0] = _spi->transfer(0x00);
-    buf[1] = _spi->transfer(0x00);
-    buf[2] = _spi->transfer(0x00);
-    digitalWrite(csPin, HIGH);
-    _spi->endTransaction();
-    
-    rawResult = buf[0];
-    rawResult = (rawResult << 8) | buf[1];
-    rawResult = (rawResult << 8) | buf[2];
-    rawResult = (rawResult << 8);
-    
-    return rawResult;
+  data <<= 8;
+  int32_t dataInt = (int)data;
+
+  return dataInt/pow(2,8);
 }
 
-uint8_t ADS131M04_CB::readRegister(uint8_t reg){
-    regValue = 0;
-    
-    _spi->beginTransaction(mySPISettings);
-    digitalWrite(csPin, LOW);
-    _spi->transfer(ADS131M04_RREG | (reg<<2)); 
-    regValue = _spi->transfer(0x00);
-    digitalWrite(csPin, HIGH);
-    _spi->endTransaction();
-    
-    return regValue;
-}
-   
-void ADS131M04_CB::writeRegister(uint8_t reg, uint8_t val){
-    _spi->beginTransaction(mySPISettings);
-    digitalWrite(csPin, LOW);
-    _spi->transfer(ADS131M04_WREG | (reg<<2)); 
-    _spi->transfer(val);
-    digitalWrite(csPin, HIGH);
-    _spi->endTransaction();
-}
-
-void ADS131M04_CB::command(uint8_t cmd){
-    _spi->beginTransaction(mySPISettings);
-    digitalWrite(csPin, LOW);
-    SPI.transfer(cmd);
-    digitalWrite(csPin, HIGH);
-    _spi->endTransaction();
-}   
 
