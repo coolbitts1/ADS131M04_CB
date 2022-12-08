@@ -25,7 +25,8 @@
 #define ADS131M04_CB_H_
 
 #define CLKIN_SPD 8192000 // CLKIN input frequency
-#define SCLK_SPD 25000000 // SPI SCLK output frequency
+// #define SCLK_SPD  25000000 // SPI SCLK output frequency
+#define SCLK_SPD  10000000 // SPI SCLK output frequency
 
 #define ADS131M04_REG_ID            0x00
 #define ADS131M04_REG_STATUS        0x01
